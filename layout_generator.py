@@ -73,8 +73,8 @@ def _bars(img, pitch, width, vertical, level, rng, ler_amp):
 
 def gen_dram(n, rng):
     img = _canvas(n, rng)
-    p1 = int(rng.integers(12, 40)) * SS
-    p2 = int(rng.integers(12, 40)) * SS
+    p1 = int(rng.integers(6, 20)) * SS
+    p2 = int(rng.integers(6, 20)) * SS
     w1 = max(2, int(p1 * rng.uniform(0.30, 0.55)))
     w2 = max(2, int(p2 * rng.uniform(0.30, 0.55)))
     lv = rng.uniform(0.45, 0.75)
@@ -82,7 +82,7 @@ def gen_dram(n, rng):
     _bars(img, p1, w1, False, lv, rng, ler)
     _bars(img, p2, w2, True, lv * rng.uniform(0.85, 1.15), rng, ler)
     # contact/via dot at every intersection
-    r = max(4 * SS, int(min(w1, w2) * rng.uniform(0.60, 0.95)))
+    r = max(2 * SS, int(min(w1, w2) * rng.uniform(0.60, 0.95)))
     dot = lv * rng.uniform(1.2, 1.5)
     o1, o2 = rng.integers(0, p1), rng.integers(0, p2)
     for y in range(o1, n, p1):
@@ -93,7 +93,7 @@ def gen_dram(n, rng):
 
 def gen_finfet(n, rng):
     img = _canvas(n, rng)
-    p = int(rng.integers(8, 26)) * SS
+    p = int(rng.integers(4, 16)) * SS
     w = max(2, int(p * rng.uniform(0.28, 0.50)))
     _bars(img, p, w, True, rng.uniform(0.40, 0.70), rng, rng.uniform(0, 1.4) * SS)
     # one or two horizontal gate bars crossing the fins
@@ -106,7 +106,7 @@ def gen_finfet(n, rng):
 
 def gen_contacts(n, rng):
     img = _canvas(n, rng)
-    p = int(rng.integers(12, 40)) * SS
+    p = int(rng.integers(6, 20)) * SS
     r = max(2, int(p * rng.uniform(0.18, 0.36)))
     lv = rng.uniform(0.65, 1.00)
     hexed = rng.random() < 0.4
@@ -120,7 +120,7 @@ def gen_contacts(n, rng):
 def gen_logic(n, rng):
     """Manhattan polygons - irregular but strictly axis-aligned."""
     img = _canvas(n, rng)
-    for _ in range(int(rng.integers(14, 70))):
+    for _ in range(int(rng.integers(40, 150))):
         w = int(rng.integers(3 * SS, 26 * SS))
         h = int(rng.integers(3 * SS, 26 * SS))
         if rng.random() < 0.5:
@@ -133,7 +133,7 @@ def gen_logic(n, rng):
 
 def gen_grating(n, rng):
     img = _canvas(n, rng)
-    p = int(rng.integers(6, 40)) * SS
+    p = int(rng.integers(4, 20)) * SS
     w = max(2, int(p * rng.uniform(0.25, 0.60)))
     _bars(img, p, w, rng.random() < 0.5, rng.uniform(0.5, 1.0), rng,
           rng.uniform(0, 2.0) * SS)
@@ -150,7 +150,7 @@ def sem_finish(img, n_out, rng):
     n = img.shape[0]
 
     # multi-layer structure: add a second faint layer at different pitch
-    if rng.random() < 0.4:
+    if rng.random() < 0.8:
         bg = _canvas(n, rng)
         p = int(rng.integers(16, 50)) * SS
         w = max(2, int(p * rng.uniform(0.2, 0.5)))
@@ -158,8 +158,8 @@ def sem_finish(img, n_out, rng):
         img = img + bg * rng.uniform(0.4, 0.7)
 
     # defects: occasional bridging (bright blobs) or missing features (dark blobs)
-    if rng.random() < 0.6:
-        for _ in range(int(rng.integers(1, 8))):
+    if rng.random() < 0.9:
+        for _ in range(int(rng.integers(3, 15))):
             r = int(rng.integers(2 * SS, 12 * SS))
             x, y = int(rng.integers(0, n)), int(rng.integers(0, n))
             if rng.random() < 0.5:

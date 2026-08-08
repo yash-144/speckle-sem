@@ -322,7 +322,7 @@ def main():
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4,
                             betas=(0.9, 0.9))
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
-    warm = 2000
+    warm = min(2000, args.steps // 10)
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, lambda s: (s + 1) / warm if s < warm else
         0.5 * (1 + math.cos(math.pi * (s - warm) / max(1, args.steps - warm)))
@@ -341,13 +341,17 @@ def main():
 
         with torch.autocast("cuda", dtype=torch.float16, enabled=device.type == "cuda"):
             pred = model(lr_img)
-            loss, parts = crit(pred.float(), gt_img.float())
+        loss, parts = crit(pred.float(), gt_img.float())
 
         opt.zero_grad(set_to_none=True)
+        if not torch.isfinite(loss):
+            print(f"step {step}: non-finite loss, skipped")
+            continue
         scaler.scale(loss).backward()
         scaler.unscale_(opt)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        scaler.step(opt)
+        gn = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        if torch.isfinite(gn):
+            scaler.step(opt)
         scaler.update()
         sched.step()
         ema.update(model)
@@ -355,8 +359,8 @@ def main():
         if step % 200 == 0:
             el = time.time() - t0
             print(f"step {step:>6}/{args.steps}  loss {loss.item():.4f}  "
-                  f"l1 {parts['l1']:.4f}  ssim {parts['ssim']:.4f}  "
-                  f"lr {sched.get_last_lr()[0]:.2e}  {el:.0f}s")
+                  f"gnorm {gn:.3f}  scale {scaler.get_scale():.0f}  "
+                  f"l1 {parts['l1']:.4f}  lr {sched.get_last_lr()[0]:.2e}  {el:.0f}s")
 
         if valsets and step % args.val_every == 0:
             # Raw model validation
