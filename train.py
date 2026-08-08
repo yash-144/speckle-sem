@@ -336,14 +336,18 @@ def main():
         valsets = build_val(parse_pairs(args.val), scale=2)
 
     model = build_model({"c": args.channels, "n_blocks": args.blocks}).to(device)
-    print(f"params: {sum(p.numel() for p in model.parameters())/1e6:.3f}M")
+    if torch.cuda.device_count() > 1:
+        model = torch.nn.DataParallel(model)
+        print(f"DataParallel across {torch.cuda.device_count()} GPUs")
+    core = model.module if hasattr(model, "module") else model
+    print(f"params: {sum(p.numel() for p in core.parameters())/1e6:.3f}M")
 
     start_step = 0
     best = -1e9
     if args.resume and os.path.exists(args.resume):
         ck = torch.load(args.resume, map_location=device, weights_only=False)
         if "model" in ck:
-            model.load_state_dict(ck["model"])
+            core.load_state_dict(ck["model"])
             opt.load_state_dict(ck["opt"])
             sched.load_state_dict(ck["sched"])
             scaler.load_state_dict(ck["scaler"])
@@ -351,7 +355,7 @@ def main():
             start_step, best = ck["step"] + 1, ck["best"]
             print(f"resumed at step {start_step}")
         else:
-            model.load_state_dict(ck)
+            core.load_state_dict(ck)
             print(f"resumed weights from {args.resume}")
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4,
@@ -363,7 +367,7 @@ def main():
         0.5 * (1 + math.cos(math.pi * (s - warm) / max(1, args.steps - warm)))
         * 0.999 + 0.001)
     crit = Criterion(device)
-    ema = EMA(model, 0.999)
+    ema = EMA(core, 0.999)
     win = gaussian_window(11, 1.5, device)
 
     t0 = time.time()
@@ -389,7 +393,7 @@ def main():
             scaler.step(opt)
         scaler.update()
         sched.step()
-        ema.update(model)
+        ema.update(core)
 
         if step % 200 == 0:
             el = time.time() - t0
@@ -399,17 +403,17 @@ def main():
 
         if valsets and step % args.val_every == 0:
             # Raw model validation
-            res_raw = validate(model, valsets, device, win)
+            res_raw = validate(core, valsets, device, win)
             msg_raw = f"  RAW @ {step:<3}"
             for k, (db, ssim_val) in res_raw.items():
                 msg_raw += f"   {k}: {db:.2f}dB/{ssim_val:.4f}"
             print(msg_raw)
 
             # EMA model validation
-            bak = {k: v.detach().clone() for k, v in model.state_dict().items()}
-            model.load_state_dict(ema.state_dict(), strict=False)
-            res = validate(model, valsets, device, win)
-            model.load_state_dict(bak)
+            bak = {k: v.detach().clone() for k, v in core.state_dict().items()}
+            core.load_state_dict(ema.state_dict(), strict=False)
+            res = validate(core, valsets, device, win)
+            core.load_state_dict(bak)
 
             msg = f"  EMA @ {step:<3}"
             for k, (db, ssim_val) in res.items():
@@ -418,17 +422,17 @@ def main():
             score = float(np.mean([p for p, _ in res.values()]))
             if score > best:
                 best = score
-                save_ckpt(os.path.join(args.out, "best.pt"), step, model, opt,
+                save_ckpt(os.path.join(args.out, "best.pt"), step, core, opt,
                           sched, scaler, ema, best)
                 torch.save(ema.state_dict(), os.path.join(args.out, "best_ema.pt"))
                 print(f"  saved best_ema.pt  (mean {score:.3f} dB)")
 
         if step > 0 and step % args.save_every == 0:
-            save_ckpt(os.path.join(args.out, "last.pt"), step, model, opt,
+            save_ckpt(os.path.join(args.out, "last.pt"), step, core, opt,
                       sched, scaler, ema, best)
 
     torch.save(ema.state_dict(), os.path.join(args.out, "final_ema.pt"))
-    torch.save(model.state_dict(), os.path.join(args.out, "final_raw.pt"))
+    torch.save(core.state_dict(), os.path.join(args.out, "final_raw.pt"))
     print(f"done in {(time.time()-t0)/60:.1f} min -> {args.out}")
 
 
