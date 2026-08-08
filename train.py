@@ -225,7 +225,7 @@ class Criterion(nn.Module):
         self.win = gaussian_window(11, 1.5, device)
         self.w = (w_l1, w_ssim, w_fft, w_grad)
 
-    def forward(self, pred, gt, want_parts=False):
+    def forward(self, pred, gt):
         w_l1, w_ss, w_ft, w_gd = self.w
         l1 = torch.sqrt((pred - gt) ** 2 + 1e-6).mean()          # Charbonnier
         ss = 1.0 - ssim(pred.float(), gt.float(), self.win)
@@ -235,9 +235,8 @@ class Criterion(nn.Module):
              ((pred[..., 1:, :] - pred[..., :-1, :]) -
               (gt[..., 1:, :] - gt[..., :-1, :])).abs().mean()
         total = w_l1 * l1 + w_ss * ss + w_ft * ft + w_gd * gd
-        parts = ({"l1": l1.item(), "ssim": ss.item(),
-                  "fft": ft.item(), "grad": gd.item()} if want_parts else {})
-        return total, parts
+        return total, {"l1": l1.item(), "ssim": ss.item(),
+                       "fft": ft.item(), "grad": gd.item()}
 
 
 # --------------------------------------------------------------------------- ema
@@ -321,7 +320,7 @@ def main():
 
     os.makedirs(args.out, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.benchmark = False
 
     print("sources:")
     srcs = [(d, float(w)) for d, w in parse_pairs(args.sources)]
@@ -336,7 +335,7 @@ def main():
         print("validation:")
         valsets = build_val(parse_pairs(args.val), scale=2)
 
-    model = build_model({"c": args.channels, "n_blocks": args.blocks}).to(device).to(memory_format=torch.channels_last)
+    model = build_model({"c": args.channels, "n_blocks": args.blocks}).to(device)
     print(f"params: {sum(p.numel() for p in model.parameters())/1e6:.3f}M")
 
     start_step = 0
@@ -372,13 +371,12 @@ def main():
         step = start_step + i
         if step >= args.steps:
             break
-        lr_img = lr_img.to(device, non_blocking=True).to(memory_format=torch.channels_last)
-        gt_img = gt_img.to(device, non_blocking=True).to(memory_format=torch.channels_last)
+        lr_img = lr_img.to(device, non_blocking=True)
+        gt_img = gt_img.to(device, non_blocking=True)
 
         with torch.autocast("cuda", dtype=torch.float16, enabled=device.type == "cuda"):
             pred = model(lr_img)
-        log = (step % 200 == 0)
-        loss, parts = crit(pred.float(), gt_img.float(), want_parts=log)
+        loss, parts = crit(pred.float(), gt_img.float())
 
         opt.zero_grad(set_to_none=True)
         if not torch.isfinite(loss):
