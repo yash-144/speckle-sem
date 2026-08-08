@@ -382,6 +382,7 @@ def main():
         if not torch.isfinite(loss):
             print(f"step {step}: non-finite loss, skipped")
             del pred, loss, parts
+            torch.cuda.empty_cache()
             continue
         scaler.scale(loss).backward()
         scaler.unscale_(opt)
