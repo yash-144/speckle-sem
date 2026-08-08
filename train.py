@@ -255,7 +255,8 @@ def validate(model, valsets, device, win):
         for lr, gt in pairs:
             lr = lr[None].to(device)
             gt = gt[None].to(device)
-            out = model(lr, clamp=True).float()
+            with torch.autocast("cuda", dtype=torch.float16, enabled=device.type == "cuda"):
+                out = model(lr, clamp=True).float()
             mse = F.mse_loss(out, gt).item()
             ps.append(10 * math.log10(1.0 / max(mse, 1e-12)))
             ss_.append(ssim(out, gt, win).item())
@@ -321,6 +322,7 @@ def main():
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4,
                             betas=(0.9, 0.9))
+    scaler = torch.cuda.amp.GradScaler(enabled=device.type == "cuda")
     warm = 2000
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, lambda s: (s + 1) / warm if s < warm else
@@ -338,13 +340,16 @@ def main():
         lr_img = lr_img.to(device, non_blocking=True).to(memory_format=torch.channels_last)
         gt_img = gt_img.to(device, non_blocking=True).to(memory_format=torch.channels_last)
 
-        pred = model(lr_img)
-        loss, parts = crit(pred.float(), gt_img.float())
+        with torch.autocast("cuda", dtype=torch.float16, enabled=device.type == "cuda"):
+            pred = model(lr_img)
+            loss, parts = crit(pred.float(), gt_img.float())
 
         opt.zero_grad(set_to_none=True)
-        loss.backward()
+        scaler.scale(loss).backward()
+        scaler.unscale_(opt)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        opt.step()
+        scaler.step(opt)
+        scaler.update()
         sched.step()
         ema.update(model)
 
