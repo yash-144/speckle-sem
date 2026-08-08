@@ -255,9 +255,7 @@ def validate(model, valsets, device, win):
         for lr, gt in pairs:
             lr = lr[None].to(device)
             gt = gt[None].to(device)
-            with torch.autocast("cuda", dtype=torch.bfloat16,
-                                enabled=device.type == "cuda"):
-                out = model(lr, clamp=True).float()
+            out = model(lr, clamp=True).float()
             mse = F.mse_loss(out, gt).item()
             ps.append(10 * math.log10(1.0 / max(mse, 1e-12)))
             ss_.append(ssim(out, gt, win).item())
@@ -340,8 +338,7 @@ def main():
         lr_img = lr_img.to(device, non_blocking=True).to(memory_format=torch.channels_last)
         gt_img = gt_img.to(device, non_blocking=True).to(memory_format=torch.channels_last)
 
-        with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device.type == "cuda"):
-            pred = model(lr_img)
+        pred = model(lr_img)
         loss, parts = crit(pred.float(), gt_img.float())
 
         opt.zero_grad(set_to_none=True)
