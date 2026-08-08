@@ -340,6 +340,18 @@ def main():
 
     start_step = 0
     best = -1e9
+    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4,
+                            betas=(0.9, 0.9))
+    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
+    warm = min(2000, args.steps // 10)
+    sched = torch.optim.lr_scheduler.LambdaLR(
+        opt, lambda s: (s + 1) / warm if s < warm else
+        0.5 * (1 + math.cos(math.pi * (s - warm) / max(1, args.steps - warm)))
+        * 0.999 + 0.001)
+    crit = Criterion(device)
+    ema = EMA(model, 0.999)
+    win = gaussian_window(11, 1.5, device)
+
     if args.resume and os.path.exists(args.resume):
         ck = torch.load(args.resume, map_location=device, weights_only=False)
         if "model" in ck:
@@ -353,18 +365,6 @@ def main():
         else:
             model.load_state_dict(ck)
             print(f"resumed weights from {args.resume}")
-
-    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4,
-                            betas=(0.9, 0.9))
-    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
-    warm = min(2000, args.steps // 10)
-    sched = torch.optim.lr_scheduler.LambdaLR(
-        opt, lambda s: (s + 1) / warm if s < warm else
-        0.5 * (1 + math.cos(math.pi * (s - warm) / max(1, args.steps - warm)))
-        * 0.999 + 0.001)
-    crit = Criterion(device)
-    ema = EMA(model, 0.999)
-    win = gaussian_window(11, 1.5, device)
 
     t0 = time.time()
     for i, (lr_img, gt_img) in enumerate(dl):
