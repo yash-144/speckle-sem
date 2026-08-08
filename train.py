@@ -297,7 +297,7 @@ def main():
 
     os.makedirs(args.out, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.benchmark = True
 
     print("sources:")
     srcs = [(d, float(w)) for d, w in parse_pairs(args.sources)]
