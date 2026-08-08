@@ -225,7 +225,7 @@ class Criterion(nn.Module):
         self.win = gaussian_window(11, 1.5, device)
         self.w = (w_l1, w_ssim, w_fft, w_grad)
 
-    def forward(self, pred, gt):
+    def forward(self, pred, gt, want_parts=False):
         w_l1, w_ss, w_ft, w_gd = self.w
         l1 = torch.sqrt((pred - gt) ** 2 + 1e-6).mean()          # Charbonnier
         ss = 1.0 - ssim(pred.float(), gt.float(), self.win)
@@ -235,8 +235,9 @@ class Criterion(nn.Module):
              ((pred[..., 1:, :] - pred[..., :-1, :]) -
               (gt[..., 1:, :] - gt[..., :-1, :])).abs().mean()
         total = w_l1 * l1 + w_ss * ss + w_ft * ft + w_gd * gd
-        return total, {"l1": l1.item(), "ssim": ss.item(),
-                       "fft": ft.item(), "grad": gd.item()}
+        parts = ({"l1": l1.item(), "ssim": ss.item(),
+                  "fft": ft.item(), "grad": gd.item()} if want_parts else {})
+        return total, parts
 
 
 # --------------------------------------------------------------------------- ema
@@ -335,7 +336,7 @@ def main():
         print("validation:")
         valsets = build_val(parse_pairs(args.val), scale=2)
 
-    model = build_model({"c": args.channels, "n_blocks": args.blocks}).to(device)
+    model = build_model({"c": args.channels, "n_blocks": args.blocks}).to(device).to(memory_format=torch.channels_last)
     print(f"params: {sum(p.numel() for p in model.parameters())/1e6:.3f}M")
 
     start_step = 0
@@ -371,12 +372,13 @@ def main():
         step = start_step + i
         if step >= args.steps:
             break
-        lr_img = lr_img.to(device, non_blocking=True)
-        gt_img = gt_img.to(device, non_blocking=True)
+        lr_img = lr_img.to(device, non_blocking=True).to(memory_format=torch.channels_last)
+        gt_img = gt_img.to(device, non_blocking=True).to(memory_format=torch.channels_last)
 
         with torch.autocast("cuda", dtype=torch.float16, enabled=device.type == "cuda"):
             pred = model(lr_img)
-        loss, parts = crit(pred.float(), gt_img.float())
+        log = (step % 200 == 0)
+        loss, parts = crit(pred.float(), gt_img.float(), want_parts=log)
 
         opt.zero_grad(set_to_none=True)
         if not torch.isfinite(loss):
