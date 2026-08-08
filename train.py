@@ -144,9 +144,8 @@ class MixtureDataset(Dataset):
             return (torch.from_numpy(lr)[None].float(),
                     torch.from_numpy(gt)[None].float())
 
-        z = np.zeros((self.patch, self.patch), np.float32)
-        return torch.from_numpy(z)[None], torch.from_numpy(
-            np.zeros((self.patch * self.scale,) * 2, np.float32))[None]
+        raise RuntimeError(f"no usable crop after 8 tries; check source image sizes "
+                           f">= {self.patch * self.scale}px")
 
 
 def build_val(val_specs, scale, max_n=64):
@@ -358,18 +357,29 @@ def main():
                   f"l1 {parts['l1']:.4f}  ssim {parts['ssim']:.4f}  "
                   f"lr {sched.get_last_lr()[0]:.2e}  {el:.0f}s")
 
-        if valsets and step > 0 and step % args.val_every == 0:
+        if valsets and step % args.val_every == 0:
+            # Raw model validation
+            res_raw = validate(model, valsets, device, win)
+            msg_raw = f"  RAW @ {step:<3}"
+            for k, (db, ssim_val) in res_raw.items():
+                msg_raw += f"   {k}: {db:.2f}dB/{ssim_val:.4f}"
+            print(msg_raw)
+
+            # EMA model validation
             bak = {k: v.detach().clone() for k, v in model.state_dict().items()}
             model.load_state_dict(ema.state_dict(), strict=False)
             res = validate(model, valsets, device, win)
-            line = "  ".join(f"{k}: {p:.2f}dB/{s:.4f}" for k, (p, s) in res.items())
-            print(f"  VAL @ {step}   {line}")
+            model.load_state_dict(bak)
+
+            msg = f"  EMA @ {step:<3}"
+            for k, (db, ssim_val) in res.items():
+                msg += f"   {k}: {db:.2f}dB/{ssim_val:.4f}"
+            print(msg)
             score = float(np.mean([p for p, _ in res.values()]))
             if score > best:
                 best = score
                 torch.save(ema.state_dict(), os.path.join(args.out, "best_ema.pt"))
                 print(f"  saved best_ema.pt  (mean {score:.3f} dB)")
-            model.load_state_dict(bak)
 
     torch.save(ema.state_dict(), os.path.join(args.out, "final_ema.pt"))
     torch.save(model.state_dict(), os.path.join(args.out, "final_raw.pt"))
