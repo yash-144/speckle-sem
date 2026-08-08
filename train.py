@@ -381,6 +381,7 @@ def main():
         opt.zero_grad(set_to_none=True)
         if not torch.isfinite(loss):
             print(f"step {step}: non-finite loss, skipped")
+            del pred, loss, parts
             continue
         scaler.scale(loss).backward()
         scaler.unscale_(opt)
