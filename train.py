@@ -297,7 +297,7 @@ def main():
 
     os.makedirs(args.out, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.benchmark = False
 
     print("sources:")
     srcs = [(d, float(w)) for d, w in parse_pairs(args.sources)]
@@ -313,7 +313,6 @@ def main():
         valsets = build_val(parse_pairs(args.val), scale=2)
 
     model = build_model({"c": args.channels, "n_blocks": args.blocks}).to(device)
-    model = model.to(memory_format=torch.channels_last)
     print(f"params: {sum(p.numel() for p in model.parameters())/1e6:.3f}M")
 
     if args.resume:
@@ -322,7 +321,7 @@ def main():
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4,
                             betas=(0.9, 0.9))
-    scaler = torch.cuda.amp.GradScaler(enabled=device.type == "cuda")
+    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
     warm = 2000
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, lambda s: (s + 1) / warm if s < warm else
@@ -337,8 +336,8 @@ def main():
     for step, (lr_img, gt_img) in enumerate(dl):
         if step >= args.steps:
             break
-        lr_img = lr_img.to(device, non_blocking=True).to(memory_format=torch.channels_last)
-        gt_img = gt_img.to(device, non_blocking=True).to(memory_format=torch.channels_last)
+        lr_img = lr_img.to(device, non_blocking=True)
+        gt_img = gt_img.to(device, non_blocking=True)
 
         with torch.autocast("cuda", dtype=torch.float16, enabled=device.type == "cuda"):
             pred = model(lr_img)
