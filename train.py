@@ -72,15 +72,24 @@ class MixtureDataset(Dataset):
 
     def __init__(self, sources, patch, scale=2, length=100000,
                  banner_dirs=(), prescale_dirs=()):
-        self.files, self.weights, self.tags = [], [], []
+        self.files, self.weights, self.tags, self.mmaps = [], [], [], []
         for d, w in sources:
-            fs = listdir(d)
-            if not fs:
-                raise SystemExit(f"no images found in {d}")
-            self.files.append(fs)
-            self.weights.append(float(w))
-            self.tags.append(d)
-            print(f"  {d:<40} {len(fs):>7} images   weight {w}")
+            if os.path.isfile(d) and d.endswith(".npy"):
+                mmap = np.load(d, mmap_mode='r')
+                self.files.append(mmap)
+                self.mmaps.append(True)
+                self.weights.append(float(w))
+                self.tags.append(d)
+                print(f"  {d:<40} {len(mmap):>7} images (mmap) weight {w}")
+            else:
+                fs = listdir(d)
+                if not fs:
+                    raise SystemExit(f"no images found in {d}")
+                self.files.append(fs)
+                self.mmaps.append(False)
+                self.weights.append(float(w))
+                self.tags.append(d)
+                print(f"  {d:<40} {len(fs):>7} images         weight {w}")
         p = np.array(self.weights, dtype=np.float64)
         self.p = p / p.sum()
         self.patch = patch
@@ -103,10 +112,16 @@ class MixtureDataset(Dataset):
 
         for _ in range(8):
             s = int(rng.choice(len(self.files), p=self.p))
-            f = self.files[s][int(rng.integers(len(self.files[s])))]
-            img = load_gray(f, s in self.banner)
-            if img is None:
-                continue
+            if self.mmaps[s]:
+                f_idx = int(rng.integers(len(self.files[s])))
+                img = self.files[s][f_idx].copy()
+                if s in self.banner and img.shape[0] > 64:
+                    img = img[: int(img.shape[0] * (1 - BANNER_FRAC))]
+            else:
+                f = self.files[s][int(rng.integers(len(self.files[s])))]
+                img = load_gray(f, s in self.banner)
+                if img is None:
+                    continue
 
             # Scale matching: 2K photos show a far finer slice of a scene than
             # a 256px SEM field of view. Random pre-downscale covers both, and
@@ -244,6 +259,13 @@ class EMA:
         return {k: v.clone() for k, v in self.shadow.items()}
 
 
+def save_ckpt(path, step, model, opt, sched, scaler, ema, best):
+    torch.save({"step": step, "model": model.state_dict(),
+                "opt": opt.state_dict(), "sched": sched.state_dict(),
+                "scaler": scaler.state_dict(), "ema": ema.shadow,
+                "best": best}, path)
+
+
 # -------------------------------------------------------------------- validation
 
 @torch.no_grad()
@@ -285,8 +307,9 @@ def main():
     ap.add_argument("--bs", type=int, default=32)
     ap.add_argument("--patch", type=int, default=128)
     ap.add_argument("--lr", type=float, default=1e-3)
-    ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--val_every", type=int, default=2000)
+    ap.add_argument("--save_every", type=int, default=1000)
     ap.add_argument("--out", default="runs/v1")
     ap.add_argument("--channels", type=int, default=64)
     ap.add_argument("--blocks", type=int, default=16)
@@ -315,9 +338,21 @@ def main():
     model = build_model({"c": args.channels, "n_blocks": args.blocks}).to(device)
     print(f"params: {sum(p.numel() for p in model.parameters())/1e6:.3f}M")
 
-    if args.resume:
-        model.load_state_dict(torch.load(args.resume, map_location=device))
-        print(f"resumed from {args.resume}")
+    start_step = 0
+    best = -1e9
+    if args.resume and os.path.exists(args.resume):
+        ck = torch.load(args.resume, map_location=device, weights_only=False)
+        if "model" in ck:
+            model.load_state_dict(ck["model"])
+            opt.load_state_dict(ck["opt"])
+            sched.load_state_dict(ck["sched"])
+            scaler.load_state_dict(ck["scaler"])
+            ema.shadow = {k: v.to(device) for k, v in ck["ema"].items()}
+            start_step, best = ck["step"] + 1, ck["best"]
+            print(f"resumed at step {start_step}")
+        else:
+            model.load_state_dict(ck)
+            print(f"resumed weights from {args.resume}")
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4,
                             betas=(0.9, 0.9))
@@ -331,9 +366,9 @@ def main():
     ema = EMA(model, 0.999)
     win = gaussian_window(11, 1.5, device)
 
-    best = -1e9
     t0 = time.time()
-    for step, (lr_img, gt_img) in enumerate(dl):
+    for i, (lr_img, gt_img) in enumerate(dl):
+        step = start_step + i
         if step >= args.steps:
             break
         lr_img = lr_img.to(device, non_blocking=True)
@@ -383,8 +418,14 @@ def main():
             score = float(np.mean([p for p, _ in res.values()]))
             if score > best:
                 best = score
+                save_ckpt(os.path.join(args.out, "best.pt"), step, model, opt,
+                          sched, scaler, ema, best)
                 torch.save(ema.state_dict(), os.path.join(args.out, "best_ema.pt"))
                 print(f"  saved best_ema.pt  (mean {score:.3f} dB)")
+
+        if step > 0 and step % args.save_every == 0:
+            save_ckpt(os.path.join(args.out, "last.pt"), step, model, opt,
+                      sched, scaler, ema, best)
 
     torch.save(ema.state_dict(), os.path.join(args.out, "final_ema.pt"))
     torch.save(model.state_dict(), os.path.join(args.out, "final_raw.pt"))
