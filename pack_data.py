@@ -54,6 +54,11 @@ def main():
 
     stacked = np.stack(arrays, axis=0)
     print(f"Stacked shape: {stacked.shape}, dtype: {stacked.dtype}, size: {stacked.nbytes / 1024 / 1024:.1f} MB")
+    
+    out_dir = os.path.dirname(args.out)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+        
     np.save(args.out, stacked)
     print("Done.")
 
