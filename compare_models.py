@@ -48,6 +48,7 @@ def main():
 
     sd_unet = torch.load(unet_ckpt_path, map_location="cpu")
     if "state_dict" in sd_unet: sd_unet = sd_unet["state_dict"]
+    elif "model" in sd_unet: sd_unet = sd_unet["model"]
     sd_unet = {k.replace("module.", "", 1): v for k, v in sd_unet.items()}
     unet_model.load_state_dict(sd_unet)
 
