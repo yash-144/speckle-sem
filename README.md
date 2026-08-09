@@ -49,3 +49,10 @@ python train.py \
   --steps 40000 --bs 16 --patch 128 --workers 4 \
   --val_every 500 --save_every 1000 --out runs/v1
 ```
+
+## Dataset Attributions
+
+If evaluating on external out-of-distribution datasets, please note the following attributions:
+- **Set5**: Standard super-resolution benchmark dataset.
+- **DF2K**: Merged DIV2K and Flickr2K datasets.
+- **NFFA-EUROPE**: Provided under CC-BY attribution. Acknowledgment to the NFFA-Europe infrastructure for the provided imagery.
