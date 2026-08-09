@@ -198,11 +198,20 @@ def main():
     done, failed = 0, 0
     for shape, fs in groups.items():
         bs = max(1, args.batch)
+        
+        # Warmup for this shape bucket
+        if device.type == "cuda":
+            with torch.no_grad():
+                for _ in range(2):
+                    _ = run_batch(model, [arrays[fs[0]]], device, use_amp)
+            torch.cuda.synchronize()
+            
         i = 0
         while i < len(fs):
             chunk = fs[i:i + bs]
             try:
                 outs = run_batch(model, [arrays[f] for f in chunk], device, use_amp)
+                if device.type == "cuda": torch.cuda.synchronize()
             except torch.cuda.OutOfMemoryError:
                 torch.cuda.empty_cache()
                 if bs > 1:

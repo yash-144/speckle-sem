@@ -13,10 +13,10 @@ import time
 
 import torch.nn.functional as F
 
-def measure_latency(model, device, num_runs=50):
+def measure_latency(model, device, probe_size=512, num_runs=50):
     # End-to-end inference latency on a standard input (e.g., 512x512)
     # Includes CPU->GPU, padding, forward, unpadding, GPU->CPU
-    probe_cpu = torch.rand(1, 1, 512, 512)
+    probe_cpu = torch.rand(1, 1, probe_size, probe_size)
     
     with torch.no_grad():
         # Warmup
@@ -58,6 +58,15 @@ def main():
     valsets = build_val(val_specs, scale=2)
     win = gaussian_window(11, 1.5, device)
 
+    print("\n" + "="*50)
+    print("DIAGNOSTIC WARNING: KLA Leakage")
+    print("="*50)
+    print("The 'kla' split is evaluated on the Kaggle train/train/GT directory.")
+    print("Because the model was trained on this entire directory, this score")
+    print("measures in-distribution capacity and memorization, NOT generalization.")
+    print("True generalization is proven via the 'set5_ood' split.")
+    print("="*50 + "\n")
+
     # ---------------------------------------------------------
     # 1. Load the v1 Model (Flat Stack) from sem-model-v2
     # ---------------------------------------------------------
@@ -76,8 +85,10 @@ def main():
     for split, metrics in res_v1.items():
         print(f"  {split}: {metrics['psnr']:.2f}dB / SSIM: {metrics['ssim']:.4f} / LPIPS-alex: {metrics['lpips_alex']:.4f} / LPIPS-vgg: {metrics['lpips_vgg']:.4f}")
     
-    v1_latency = measure_latency(v1_model, device)
-    print(f"  Latency: {v1_latency:.2f} ms")
+    v1_lat_256 = measure_latency(v1_model, device, probe_size=256)
+    v1_lat_512 = measure_latency(v1_model, device, probe_size=512)
+    print(f"  Latency (256x256): {v1_lat_256:.2f} ms")
+    print(f"  Latency (512x512): {v1_lat_512:.2f} ms")
 
     # ---------------------------------------------------------
     # 2. Load the U-Net Model (NAFNetSR) from unet_model.py
@@ -106,17 +117,19 @@ def main():
             out = self.m(x)
             return out.clamp(0.0, 1.0) if clamp else out
 
-    unet_model = ClampingWrapper(unet_model)
+    wrapped_unet = ClampingWrapper(unet_model)
 
     print("\n" + "="*50)
     print("Evaluating U-Net Model (NAFNetSR - sem-model)")
     print("="*50)
-    res_unet = validate(unet_model, valsets, device, win, lpips_nets=("alex", "vgg"))
+    res_unet = validate(wrapped_unet, valsets, device, win, lpips_nets=("alex", "vgg"))
     for split, metrics in res_unet.items():
         print(f"  {split}: {metrics['psnr']:.2f}dB / SSIM: {metrics['ssim']:.4f} / LPIPS-alex: {metrics['lpips_alex']:.4f} / LPIPS-vgg: {metrics['lpips_vgg']:.4f}")
 
-    unet_latency = measure_latency(unet_model, device)
-    print(f"  Latency: {unet_latency:.2f} ms")
+    unet_lat_256 = measure_latency(wrapped_unet, device, probe_size=256)
+    unet_lat_512 = measure_latency(wrapped_unet, device, probe_size=512)
+    print(f"  Latency (256x256): {unet_lat_256:.2f} ms")
+    print(f"  Latency (512x512): {unet_lat_512:.2f} ms")
         
     print("\n" + "="*50)
     print("WINNER ANALYSIS")
@@ -160,11 +173,26 @@ def main():
             print("LPIPS-vgg:  Tie!")
 
     print("\n--- Latency (End-to-End Inference: CPU -> Pad -> GPU -> Unpad -> CPU) ---")
-    lat_diff = unet_latency - v1_latency
-    if lat_diff > 0:
-        print(f"v1 Model is faster by {lat_diff:.2f} ms ({v1_latency:.2f} vs {unet_latency:.2f})")
+    lat_diff_256 = unet_lat_256 - v1_lat_256
+    lat_diff_512 = unet_lat_512 - v1_lat_512
+    
+    print("At 256x256 resolution:")
+    if lat_diff_256 > 0:
+        print(f"  v1 Model is faster by {lat_diff_256:.2f} ms ({v1_lat_256:.2f} vs {unet_lat_256:.2f})")
     else:
-        print(f"U-Net Model is faster by {abs(lat_diff):.2f} ms ({unet_latency:.2f} vs {v1_latency:.2f})")
+        print(f"  U-Net Model is faster by {-lat_diff_256:.2f} ms ({unet_lat_256:.2f} vs {v1_lat_256:.2f})")
+        
+    print("At 512x512 resolution:")
+    if lat_diff_512 > 0:
+        print(f"  v1 Model is faster by {lat_diff_512:.2f} ms ({v1_lat_512:.2f} vs {unet_lat_512:.2f})")
+    else:
+        print(f"  U-Net Model is faster by {-lat_diff_512:.2f} ms ({unet_lat_512:.2f} vs {v1_lat_512:.2f})")
+        
+    v1_scale = v1_lat_512 / v1_lat_256
+    unet_scale = unet_lat_512 / unet_lat_256
+    print("\n--- Structural Cost Scaling (256 -> 512 = 4x Pixels) ---")
+    print(f"  v1 Model scales by {v1_scale:.2f}x")
+    print(f"  U-Net Model scales by {unet_scale:.2f}x")
 
 if __name__ == "__main__":
     main()
