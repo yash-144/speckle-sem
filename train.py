@@ -35,6 +35,7 @@ from torch.utils.data import Dataset, DataLoader
 
 from model import build_model
 from degradation_engine import Degrader
+from lpips_metric import lpips_score
 
 EXTS = (".npy", ".png", ".tif", ".tiff", ".bmp", ".jpg", ".jpeg")
 BANNER_FRAC = 0.10   # NFFA instrument banner along the bottom
@@ -273,7 +274,7 @@ def validate(model, valsets, device, win):
     model.eval()
     res = {}
     for name, pairs in valsets.items():
-        ps, ss_ = [], []
+        ps, ss_, lps = [], [], []
         for lr, gt in pairs:
             lr = lr[None].to(device)
             gt = gt[None].to(device)
@@ -282,7 +283,8 @@ def validate(model, valsets, device, win):
             mse = F.mse_loss(out, gt).item()
             ps.append(10 * math.log10(1.0 / max(mse, 1e-12)))
             ss_.append(ssim(out, gt, win).item())
-        res[name] = (float(np.mean(ps)), float(np.mean(ss_)))
+            lps.append(lpips_score(out, gt, net="alex", clamp=True))
+        res[name] = (float(np.mean(ps)), float(np.mean(ss_)), float(np.mean(lps)))
     model.train()
     return res
 
@@ -407,8 +409,8 @@ def main():
             # Raw model validation
             res_raw = validate(model, valsets, device, win)
             msg_raw = f"  RAW @ {step:<3}"
-            for k, (db, ssim_val) in res_raw.items():
-                msg_raw += f"   {k}: {db:.2f}dB/{ssim_val:.4f}"
+            for k, (db, ssim_val, lp_val) in res_raw.items():
+                msg_raw += f"   {k}: {db:.2f}dB/{ssim_val:.4f}/{lp_val:.4f}"
             print(msg_raw)
 
             # EMA model validation
@@ -418,10 +420,10 @@ def main():
             model.load_state_dict(bak)
 
             msg = f"  EMA @ {step:<3}"
-            for k, (db, ssim_val) in res.items():
-                msg += f"   {k}: {db:.2f}dB/{ssim_val:.4f}"
+            for k, (db, ssim_val, lp_val) in res.items():
+                msg += f"   {k}: {db:.2f}dB/{ssim_val:.4f}/{lp_val:.4f}"
             print(msg)
-            score = float(np.mean([p for p, _ in res.values()]))
+            score = float(np.mean([p for p, _, _ in res.values()]))
             if score > best:
                 best = score
                 save_ckpt(os.path.join(args.out, "best.pt"), step, model, opt,

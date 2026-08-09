@@ -101,8 +101,8 @@ def run_batch(model, arrs, device, use_amp):
 
 def main():
     ap = argparse.ArgumentParser(add_help=True)
-    ap.add_argument("--input_dir", "--input", "-i", dest="input_dir")
-    ap.add_argument("--output_dir", "--output", "-o", dest="output_dir")
+    ap.add_argument("--input_directory", "--input_dir", "--input", "-i", dest="input_dir")
+    ap.add_argument("--output_directory", "--output_dir", "--output", "-o", dest="output_dir")
     ap.add_argument("--weights", default=DEFAULT_WEIGHTS)
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--channels", type=int, default=64)
