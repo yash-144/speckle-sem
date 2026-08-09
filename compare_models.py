@@ -52,6 +52,16 @@ def main():
     sd_unet = {k.replace("module.", "", 1): v for k, v in sd_unet.items()}
     unet_model.load_state_dict(sd_unet)
 
+    class ClampingWrapper(torch.nn.Module):
+        def __init__(self, m):
+            super().__init__()
+            self.m = m
+        def forward(self, x, clamp=False):
+            out = self.m(x)
+            return out.clamp(0.0, 1.0) if clamp else out
+
+    unet_model = ClampingWrapper(unet_model)
+
     print("\n" + "="*50)
     print("Evaluating U-Net Model (NAFNetSR - sem-model)")
     print("="*50)
