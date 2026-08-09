@@ -38,7 +38,7 @@ def main():
     # ---------------------------------------------------------
     from unet_model import NAFNetSR  # The U-Net style model
     
-    unet_model = NAFNetSR(channels=1, width=32, scale=2).to(device)
+    unet_model = NAFNetSR(channels=1, width=32, scale=2, hr_blocks=0).to(device)
     
     unet_ckpt_path = "model_A_p96.pth"
     if not os.path.exists(unet_ckpt_path):
