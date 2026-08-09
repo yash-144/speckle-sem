@@ -86,7 +86,7 @@ def main():
     
     unet_model = NAFNetSR(channels=1, width=32, scale=2, hr_blocks=0).to(device)
     
-    unet_ckpt_path = "model_A_p96.pth"
+    unet_ckpt_path = "archive/scripts/model_A_p96.pth"
     if not os.path.exists(unet_ckpt_path):
         print(f"\nWARNING: '{unet_ckpt_path}' not found!")
         print("Please ensure model_A_p96.pth is in the working directory.")
