@@ -53,7 +53,7 @@ def main():
     print(f"Using device: {device}")
 
     # Build validation sets (it will use your local val/kla_gt symlinks)
-    val_specs = parse_pairs("kla_holdout:val/kla_holdout,layouts_holdout:val/layouts_holdout,set5_ood:val/set5_ood")
+    val_specs = parse_pairs("kla:/kaggle/input/datasets/yashgoyaldev/sem-dataset/train/train/GT,layouts_holdout:val/layouts_holdout,set5_ood:val/set5_ood")
     valsets = build_val(val_specs, scale=2)
     win = gaussian_window(11, 1.5, device)
 
