@@ -18,35 +18,36 @@ def measure_latency(model, device, num_runs=50):
     # Includes CPU->GPU, padding, forward, unpadding, GPU->CPU
     probe_cpu = torch.rand(1, 1, 512, 512)
     
-    # Warmup
-    for _ in range(5):
-        t = probe_cpu.to(device)
-        h, w = t.shape[-2:]
-        pad_h = (16 - h % 16) % 16
-        pad_w = (16 - w % 16) % 16
-        if pad_h > 0 or pad_w > 0:
-            t = F.pad(t, (0, pad_w, 0, pad_h), mode="reflect")
-        out = model(t)
-        if pad_h > 0 or pad_w > 0:
-            out = out[..., :2*h, :2*w]
-        _ = out.cpu()
-        
-    if device.type == "cuda": torch.cuda.synchronize()
-    t0 = time.time()
-    for _ in range(num_runs):
-        t = probe_cpu.to(device)
-        h, w = t.shape[-2:]
-        pad_h = (16 - h % 16) % 16
-        pad_w = (16 - w % 16) % 16
-        if pad_h > 0 or pad_w > 0:
-            t = F.pad(t, (0, pad_w, 0, pad_h), mode="reflect")
-        out = model(t)
-        if pad_h > 0 or pad_w > 0:
-            out = out[..., :2*h, :2*w]
-        _ = out.cpu()
-        
-    if device.type == "cuda": torch.cuda.synchronize()
-    return (time.time() - t0) / num_runs * 1000
+    with torch.no_grad():
+        # Warmup
+        for _ in range(5):
+            t = probe_cpu.to(device)
+            h, w = t.shape[-2:]
+            pad_h = (16 - h % 16) % 16
+            pad_w = (16 - w % 16) % 16
+            if pad_h > 0 or pad_w > 0:
+                t = F.pad(t, (0, pad_w, 0, pad_h), mode="reflect")
+            out = model(t)
+            if pad_h > 0 or pad_w > 0:
+                out = out[..., :2*h, :2*w]
+            _ = out.cpu()
+            
+        if device.type == "cuda": torch.cuda.synchronize()
+        t0 = time.time()
+        for _ in range(num_runs):
+            t = probe_cpu.to(device)
+            h, w = t.shape[-2:]
+            pad_h = (16 - h % 16) % 16
+            pad_w = (16 - w % 16) % 16
+            if pad_h > 0 or pad_w > 0:
+                t = F.pad(t, (0, pad_w, 0, pad_h), mode="reflect")
+            out = model(t)
+            if pad_h > 0 or pad_w > 0:
+                out = out[..., :2*h, :2*w]
+            _ = out.cpu()
+            
+        if device.type == "cuda": torch.cuda.synchronize()
+        return (time.time() - t0) / num_runs * 1000
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
