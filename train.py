@@ -260,11 +260,23 @@ class EMA:
         return {k: v.clone() for k, v in self.shadow.items()}
 
 
+def check_tail(sd, step):
+    tail = sum(v.float().norm().item() for k, v in sd.items() if "tail" in k)
+    if step > 0 and tail < 1e-6:
+        raise RuntimeError(f"refusing to save zero-tail checkpoint at step {step}")
+
 def save_ckpt(path, step, model, opt, sched, scaler, ema, best):
+    check_tail(ema.shadow, step)
     torch.save({"step": step, "model": model.state_dict(),
                 "opt": opt.state_dict(), "sched": sched.state_dict(),
                 "scaler": scaler.state_dict(), "ema": ema.shadow,
                 "best": best}, path)
+
+def save_ema(path, step, ema):
+    sd = ema.state_dict()
+    check_tail(sd, step)
+    sd["step"] = step
+    torch.save(sd, path)
 
 
 # -------------------------------------------------------------------- validation
@@ -428,14 +440,14 @@ def main():
                 best = score
                 save_ckpt(os.path.join(args.out, "best.pt"), step, model, opt,
                           sched, scaler, ema, best)
-                torch.save(ema.state_dict(), os.path.join(args.out, "best_ema.pt"))
+                save_ema(os.path.join(args.out, "best_ema.pt"), step, ema)
                 print(f"  saved best_ema.pt  (mean {score:.3f} dB)")
 
         if step > 0 and step % args.save_every == 0:
             save_ckpt(os.path.join(args.out, "last.pt"), step, model, opt,
                       sched, scaler, ema, best)
 
-    torch.save(ema.state_dict(), os.path.join(args.out, "final_ema.pt"))
+    save_ema(os.path.join(args.out, "final_ema.pt"), step, ema)
     torch.save(model.state_dict(), os.path.join(args.out, "final_raw.pt"))
     print(f"done in {(time.time()-t0)/60:.1f} min -> {args.out}")
 

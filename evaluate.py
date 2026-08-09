@@ -142,6 +142,11 @@ def main():
     sd = sd.get("state_dict", sd)
     sd = {k.replace("module.", "", 1): v for k, v in sd.items()}
     
+    step = sd.pop("step", None)
+    if step is None or step == 0:
+        raise SystemExit(f"FATAL: checkpoint has step={step} (must be > 0). "
+                         f"This is an untrained or stale checkpoint.")
+
     missing, unexpected = model.load_state_dict(sd, strict=False)
     if missing or unexpected:
         raise SystemExit(
