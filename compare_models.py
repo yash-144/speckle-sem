@@ -12,7 +12,7 @@ def main():
     print(f"Using device: {device}")
 
     # Build validation sets (it will use your local val/kla_gt symlinks)
-    val_specs = parse_pairs("kla:val/kla_gt,layouts_unseen:val/layouts_holdout")
+    val_specs = parse_pairs("kla:/kaggle/input/datasets/yashgoyaldev/sem-dataset/train/train/GT")
     valsets = build_val(val_specs, scale=2, max_n=64)
     win = gaussian_window(11, 1.5, device)
 
@@ -35,17 +35,22 @@ def main():
         print(f"  {k}: {db:.2f}dB / SSIM: {ssim_val:.4f} / LPIPS: {lp_val:.4f}")
 
     # ---------------------------------------------------------
-    # 2. Load the U-Net Model (NAFNetSR) from sem-model
+    # 2. Load the U-Net Model (NAFNetSR) from unet_model.py
     # ---------------------------------------------------------
-    sys.path.insert(0, "/home/yash/Storage/core/sem-model")
-    from model import NAFNetSR  # The U-Net style model
+    from unet_model import NAFNetSR  # The U-Net style model
     
     unet_model = NAFNetSR(channels=1, width=32, scale=2).to(device)
-    sd_unet = torch.load("/home/yash/Storage/core/sem-model/FINAL.pth", map_location="cpu")
+    
+    unet_ckpt_path = "FINAL.pth"
+    if not os.path.exists(unet_ckpt_path):
+        print(f"\nWARNING: '{unet_ckpt_path}' not found!")
+        print("Please upload your U-Net FINAL.pth to the working directory on Kaggle to compare it.")
+        return
+
+    sd_unet = torch.load(unet_ckpt_path, map_location="cpu")
     if "state_dict" in sd_unet: sd_unet = sd_unet["state_dict"]
     sd_unet = {k.replace("module.", "", 1): v for k, v in sd_unet.items()}
     unet_model.load_state_dict(sd_unet)
-    sys.path.pop(0)
 
     print("\n" + "="*50)
     print("Evaluating U-Net Model (NAFNetSR - sem-model)")
