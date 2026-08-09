@@ -315,7 +315,7 @@ def parse_pairs(s, sep=":"):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sources", required=True, help='"dir:weight,dir:weight"')
+    ap.add_argument("--sources", default="", help='"dir:weight,dir:weight"')
     ap.add_argument("--val", default="", help='"name:dir,name:dir"')
     ap.add_argument("--steps", type=int, default=40000)
     ap.add_argument("--bs", type=int, default=32)
@@ -338,13 +338,17 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
 
-    print("sources:")
-    srcs = [(d, float(w)) for d, w in parse_pairs(args.sources)]
-    ds = MixtureDataset(srcs, args.patch, length=(args.steps + 1000) * args.bs,
-                        banner_dirs=tuple(args.banner_dirs.split(",")),
-                        prescale_dirs=tuple(args.prescale_dirs.split(",")))
-    dl = DataLoader(ds, batch_size=args.bs, num_workers=args.workers,
-                    pin_memory=True, drop_last=True, persistent_workers=args.workers > 0)
+    if not args.eval_only and not args.sources:
+        ap.error("--sources is required unless --eval_only is set")
+
+    if not args.eval_only:
+        print("sources:")
+        srcs = [(d, float(w)) for d, w in parse_pairs(args.sources)]
+        ds = MixtureDataset(srcs, args.patch, length=(args.steps + 1000) * args.bs,
+                            banner_dirs=tuple(args.banner_dirs.split(",")),
+                            prescale_dirs=tuple(args.prescale_dirs.split(",")))
+        dl = DataLoader(ds, batch_size=args.bs, num_workers=args.workers,
+                        pin_memory=True, drop_last=True, persistent_workers=args.workers > 0)
 
     valsets = {}
     if args.val:
