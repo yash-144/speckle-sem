@@ -105,8 +105,6 @@ def main():
     ap.add_argument("--output_directory", "--output_dir", "--output", "-o", dest="output_dir")
     ap.add_argument("--weights", default=DEFAULT_WEIGHTS)
     ap.add_argument("--batch", type=int, default=8)
-    ap.add_argument("--channels", type=int, default=64)
-    ap.add_argument("--blocks", type=int, default=16)
     ap.add_argument("--fp32", action="store_true")
     ap.add_argument("pos", nargs="*", help="input_dir output_dir (positional)")
     args = ap.parse_args()
@@ -130,7 +128,6 @@ def main():
     use_amp = (device.type == "cuda") and not args.fp32
     torch.backends.cudnn.benchmark = True
 
-    model = build_model({"c": args.channels, "n_blocks": args.blocks})
     from pathlib import Path
     ckpt = Path(args.weights)
     if not ckpt.is_absolute():
@@ -142,10 +139,12 @@ def main():
     sd = sd.get("state_dict", sd)
     sd = {k.replace("module.", "", 1): v for k, v in sd.items()}
     
-    step = sd.pop("step", None)
-    if step is None or step == 0:
-        raise SystemExit(f"FATAL: checkpoint has step={step} (must be > 0). "
-                         f"This is an untrained or stale checkpoint.")
+    sd.pop("step", None)
+    
+    C = sd["head.weight"].shape[0]
+    B = 1 + max(int(k.split(".")[1]) for k in sd if k.startswith("body."))
+    
+    model = build_model({"c": C, "n_blocks": B})
 
     missing, unexpected = model.load_state_dict(sd, strict=False)
     if missing or unexpected:
@@ -153,9 +152,9 @@ def main():
             f"FATAL: checkpoint/arch mismatch.\n"
             f"  missing({len(missing)}): {missing[:5]}\n"
             f"  unexpected({len(unexpected)}): {unexpected[:5]}\n"
-            f"  built with channels={args.channels} blocks={args.blocks}")
+            f"  inferred channels={C} blocks={B}")
     print(f"loaded {ckpt} ({ckpt.stat().st_size/1e6:.2f} MB), "
-          f"channels={args.channels} blocks={args.blocks}")
+          f"channels={C} blocks={B}")
     model.eval().to(device)
 
     with torch.no_grad():
