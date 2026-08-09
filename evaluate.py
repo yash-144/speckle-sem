@@ -131,14 +131,36 @@ def main():
     torch.backends.cudnn.benchmark = True
 
     model = build_model({"c": args.channels, "n_blocks": args.blocks})
-    sd = torch.load(args.weights, map_location="cpu", weights_only=True)
+    from pathlib import Path
+    ckpt = Path(args.weights)
+    if not ckpt.is_absolute():
+        ckpt = Path(__file__).resolve().parent / ckpt
+    if not ckpt.exists():
+        raise SystemExit(f"FATAL: no checkpoint at {ckpt}")
+
+    sd = torch.load(str(ckpt), map_location="cpu", weights_only=True)
     sd = sd.get("state_dict", sd)
     sd = {k.replace("module.", "", 1): v for k, v in sd.items()}
+    
     missing, unexpected = model.load_state_dict(sd, strict=False)
-    if missing:
-        print(f"warning: {len(missing)} missing keys, e.g. {missing[:3]}",
-              file=sys.stderr)
+    if missing or unexpected:
+        raise SystemExit(
+            f"FATAL: checkpoint/arch mismatch.\n"
+            f"  missing({len(missing)}): {missing[:5]}\n"
+            f"  unexpected({len(unexpected)}): {unexpected[:5]}\n"
+            f"  built with channels={args.channels} blocks={args.blocks}")
+    print(f"loaded {ckpt} ({ckpt.stat().st_size/1e6:.2f} MB), "
+          f"channels={args.channels} blocks={args.blocks}")
     model.eval().to(device)
+
+    with torch.no_grad():
+        probe = torch.rand(1, 1, 64, 64, device=device)
+        bic = F.interpolate(probe, scale_factor=2, mode="bicubic", align_corners=False)
+        delta = (model(probe).float() - bic).abs().max().item()
+    if delta < 1e-6:
+        raise SystemExit(f"FATAL: output identical to bicubic (delta {delta:.2e}) "
+                         "— weights did not load.")
+    print(f"self-test OK: deviates from bicubic by {delta:.4f}")
 
     print(f"device={device}  amp={use_amp}  images={len(files)}")
 
