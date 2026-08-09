@@ -4,8 +4,7 @@ import torch
 import numpy as np
 
 # Load the validation logic from the current project
-from train import build_val, validate, parse_pairs
-from metrics import gaussian_window
+from train import build_val, validate, parse_pairs, gaussian_window
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
