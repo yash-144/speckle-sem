@@ -282,11 +282,12 @@ def save_ema(path, step, ema):
 # -------------------------------------------------------------------- validation
 
 @torch.no_grad()
-def validate(model, valsets, device, win):
+def validate(model, valsets, device, win, lpips_nets=("alex",)):
     model.eval()
     res = {}
     for name, pairs in valsets.items():
-        ps, ss_, lps = [], [], []
+        ps, ss_ = [], []
+        lps = {net: [] for net in lpips_nets}
         for lr, gt in pairs:
             lr = lr[None].to(device)
             gt = gt[None].to(device)
@@ -295,8 +296,18 @@ def validate(model, valsets, device, win):
             mse = F.mse_loss(out, gt).item()
             ps.append(10 * math.log10(1.0 / max(mse, 1e-12)))
             ss_.append(ssim(out, gt, win).item())
-            lps.append(lpips_score(out, gt, net="alex", clamp=True))
-        res[name] = (float(np.mean(ps)), float(np.mean(ss_)), float(np.mean(lps)))
+            for net in lpips_nets:
+                lps[net].append(lpips_score(out, gt, net=net, clamp=True))
+        
+        if lpips_nets == ("alex",):
+            res[name] = (float(np.mean(ps)), float(np.mean(ss_)), float(np.mean(lps["alex"])))
+        else:
+            res[name] = {
+                "psnr": float(np.mean(ps)),
+                "ssim": float(np.mean(ss_)),
+            }
+            for net in lpips_nets:
+                res[name][f"lpips_{net}"] = float(np.mean(lps[net]))
     model.train()
     return res
 

@@ -94,8 +94,22 @@ def write_image(path, arr, meta):
 @torch.no_grad()
 def run_batch(model, arrs, device, use_amp):
     t = torch.from_numpy(np.stack(arrs)[:, None]).to(device)
+    h, w = t.shape[-2:]
+    
+    pad_h = (16 - h % 16) % 16
+    pad_w = (16 - w % 16) % 16
+    
+    if pad_h > 0 or pad_w > 0:
+        t = F.pad(t, (0, pad_w, 0, pad_h), mode="reflect")
+        
     with torch.autocast("cuda", dtype=torch.float16, enabled=use_amp):
-        out = model(t, clamp=True)
+        out = model(t)
+        if hasattr(out, "clamp"):
+            out = out.clamp(0.0, 1.0)
+            
+    if pad_h > 0 or pad_w > 0:
+        out = out[..., :2*h, :2*w]
+        
     return out.float().cpu().numpy()[:, 0]
 
 
