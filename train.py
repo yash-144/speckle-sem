@@ -324,7 +324,7 @@ def main():
 
     print("sources:")
     srcs = [(d, float(w)) for d, w in parse_pairs(args.sources)]
-    ds = MixtureDataset(srcs, args.patch, length=args.steps * args.bs,
+    ds = MixtureDataset(srcs, args.patch, length=(args.steps + 1000) * args.bs,
                         banner_dirs=tuple(args.banner_dirs.split(",")),
                         prescale_dirs=tuple(args.prescale_dirs.split(",")))
     dl = DataLoader(ds, batch_size=args.bs, num_workers=args.workers,
@@ -364,7 +364,9 @@ def main():
             print(f"resumed at step {start_step}")
         else:
             model.load_state_dict(ck)
-            print(f"resumed weights from {args.resume}")
+            print("loaded weights only (no optimizer state)")
+    elif args.resume:
+        print(f"no checkpoint at {args.resume}, starting fresh")
 
     t0 = time.time()
     for i, (lr_img, gt_img) in enumerate(dl):
