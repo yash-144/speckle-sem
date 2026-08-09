@@ -41,10 +41,10 @@ def main():
     
     unet_model = NAFNetSR(channels=1, width=32, scale=2).to(device)
     
-    unet_ckpt_path = "FINAL.pth"
+    unet_ckpt_path = "model_A_p96.pth"
     if not os.path.exists(unet_ckpt_path):
         print(f"\nWARNING: '{unet_ckpt_path}' not found!")
-        print("Please upload your U-Net FINAL.pth to the working directory on Kaggle to compare it.")
+        print("Please ensure model_A_p96.pth is in the working directory.")
         return
 
     sd_unet = torch.load(unet_ckpt_path, map_location="cpu")
