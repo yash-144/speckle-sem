@@ -20,7 +20,7 @@ def main():
     # ---------------------------------------------------------
     from model import build_model as build_v1_model
     v1_model = build_v1_model({"c": 64, "n_blocks": 16}).to(device)
-    sd_v1 = torch.load("weights/best_ema.pt", map_location="cpu")
+    sd_v1 = torch.load("weights/v1/best_ema.pt", map_location="cpu")
     if "state_dict" in sd_v1: sd_v1 = sd_v1["state_dict"]
     sd_v1 = {k.replace("module.", "", 1): v for k, v in sd_v1.items()}
     sd_v1.pop("step", None)
