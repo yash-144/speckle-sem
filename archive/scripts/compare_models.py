@@ -82,7 +82,7 @@ def main():
     # ---------------------------------------------------------
     # 2. Load the U-Net Model (NAFNetSR) from unet_model.py
     # ---------------------------------------------------------
-    from archive.unet_model import NAFNetSR  # The U-Net style model
+    from unet_model import NAFNetSR  # The U-Net style model
     
     unet_model = NAFNetSR(channels=1, width=32, scale=2, hr_blocks=0).to(device)
     
