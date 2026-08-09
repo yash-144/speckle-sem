@@ -17,11 +17,16 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--src", required=True, help="Source directory containing images")
     parser.add_argument("--out", required=True, help="Output .npy file path")
+    parser.add_argument("--skip", type=int, default=0, help="Number of sorted files to skip from the beginning (e.g. 64 to exclude validation set)")
     args = parser.parse_args()
 
     fs = glob.glob(os.path.join(args.src, "**", "*"), recursive=True)
     fs = [f for f in fs if os.path.isfile(f) and f.lower().endswith((".png", ".jpg", ".npy", ".tif", ".bmp", ".jpeg"))]
     fs.sort()
+    
+    if args.skip > 0:
+        print(f"Skipping first {args.skip} files (e.g. held out for validation).")
+        fs = fs[args.skip:]
 
     print(f"Packing {len(fs)} images from {args.src} -> {args.out}")
     if not fs:
