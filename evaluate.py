@@ -118,7 +118,7 @@ def main():
     ap.add_argument("--input_directory", "--input_dir", "--input", "-i", dest="input_dir")
     ap.add_argument("--output_directory", "--output_dir", "--output", "-o", dest="output_dir")
     ap.add_argument("--weights", default=DEFAULT_WEIGHTS)
-    ap.add_argument("--batch", type=int, default=8)
+    ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--fp32", action="store_true")
     ap.add_argument("pos", nargs="*", help="input_dir output_dir (positional)")
     args = ap.parse_args()
