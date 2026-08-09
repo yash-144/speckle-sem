@@ -357,6 +357,8 @@ def main():
         if "model" in ck:
             model.load_state_dict(ck["model"])
             opt.load_state_dict(ck["opt"])
+            for g in opt.param_groups:
+                g['lr'] = args.lr
             sched.load_state_dict(ck["sched"])
             scaler.load_state_dict(ck["scaler"])
             ema.shadow = {k: v.to(device) for k, v in ck["ema"].items()}
