@@ -8,14 +8,40 @@ from train import build_val, validate, parse_pairs, gaussian_window
 
 import time
 
+import torch.nn.functional as F
+
 def measure_latency(model, device, num_runs=50):
-    probe = torch.rand(1, 1, 64, 64, device=device)
+    # End-to-end inference latency on a standard input (e.g., 512x512)
+    # Includes CPU->GPU, padding, forward, unpadding, GPU->CPU
+    probe_cpu = torch.rand(1, 1, 512, 512)
+    
+    # Warmup
     for _ in range(5):
-        _ = model(probe)
+        t = probe_cpu.to(device)
+        h, w = t.shape[-2:]
+        pad_h = (16 - h % 16) % 16
+        pad_w = (16 - w % 16) % 16
+        if pad_h > 0 or pad_w > 0:
+            t = F.pad(t, (0, pad_w, 0, pad_h), mode="reflect")
+        out = model(t)
+        if pad_h > 0 or pad_w > 0:
+            out = out[..., :2*h, :2*w]
+        _ = out.cpu()
+        
     if device.type == "cuda": torch.cuda.synchronize()
     t0 = time.time()
     for _ in range(num_runs):
-        _ = model(probe)
+        t = probe_cpu.to(device)
+        h, w = t.shape[-2:]
+        pad_h = (16 - h % 16) % 16
+        pad_w = (16 - w % 16) % 16
+        if pad_h > 0 or pad_w > 0:
+            t = F.pad(t, (0, pad_w, 0, pad_h), mode="reflect")
+        out = model(t)
+        if pad_h > 0 or pad_w > 0:
+            out = out[..., :2*h, :2*w]
+        _ = out.cpu()
+        
     if device.type == "cuda": torch.cuda.synchronize()
     return (time.time() - t0) / num_runs * 1000
 
@@ -24,7 +50,7 @@ def main():
     print(f"Using device: {device}")
 
     # Build validation sets (it will use your local val/kla_gt symlinks)
-    val_specs = parse_pairs("kla:/kaggle/input/datasets/yashgoyaldev/sem-dataset/train/train/GT,layouts_unseen:val/layouts_holdout")
+    val_specs = parse_pairs("kla_holdout:val/kla_holdout,layouts_holdout:val/layouts_holdout,set5_ood:val/set5_ood")
     valsets = build_val(val_specs, scale=2)
     win = gaussian_window(11, 1.5, device)
 
@@ -129,7 +155,7 @@ def main():
         else:
             print("LPIPS-vgg:  Tie!")
 
-    print("\n--- Latency ---")
+    print("\n--- Latency (End-to-End Inference: CPU -> Pad -> GPU -> Unpad -> CPU) ---")
     lat_diff = unet_latency - v1_latency
     if lat_diff > 0:
         print(f"v1 Model is faster by {lat_diff:.2f} ms ({v1_latency:.2f} vs {unet_latency:.2f})")
