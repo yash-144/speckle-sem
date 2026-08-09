@@ -72,16 +72,32 @@ def main():
     print("\n" + "="*50)
     print("WINNER ANALYSIS (KLA SPLIT)")
     print("="*50)
-    v1_kla = res_v1["kla"][0]
-    unet_kla = res_unet["kla"][0]
-    diff = v1_kla - unet_kla
+    v1_kla_psnr, v1_kla_ssim, v1_kla_lpips = res_v1["kla"]
+    unet_kla_psnr, unet_kla_ssim, unet_kla_lpips = res_unet["kla"]
     
-    if diff > 0:
-        print(f"-> v1 Model (Flat Stack) wins by {diff:.2f} dB!")
-    elif diff < 0:
-        print(f"-> U-Net Model (NAFNetSR) wins by {abs(diff):.2f} dB!")
+    psnr_diff = v1_kla_psnr - unet_kla_psnr
+    if psnr_diff > 0:
+        print(f"PSNR:  v1 Model wins by {psnr_diff:.2f} dB (higher is better)")
+    elif psnr_diff < 0:
+        print(f"PSNR:  U-Net Model wins by {abs(psnr_diff):.2f} dB (higher is better)")
     else:
-        print("-> It's a precise tie!")
+        print("PSNR:  Tie!")
+        
+    ssim_diff = v1_kla_ssim - unet_kla_ssim
+    if ssim_diff > 0:
+        print(f"SSIM:  v1 Model wins by {ssim_diff:.4f} (higher is better)")
+    elif ssim_diff < 0:
+        print(f"SSIM:  U-Net Model wins by {abs(ssim_diff):.4f} (higher is better)")
+    else:
+        print("SSIM:  Tie!")
+        
+    lpips_diff = unet_kla_lpips - v1_kla_lpips
+    if lpips_diff > 0:
+        print(f"LPIPS: v1 Model wins by {abs(lpips_diff):.4f} (lower is better)")
+    elif lpips_diff < 0:
+        print(f"LPIPS: U-Net Model wins by {abs(lpips_diff):.4f} (lower is better)")
+    else:
+        print("LPIPS: Tie!")
 
 if __name__ == "__main__":
     main()
