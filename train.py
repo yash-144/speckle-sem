@@ -330,6 +330,8 @@ def main():
     ap.add_argument("--banner_dirs", default="nffa")
     ap.add_argument("--prescale_dirs", default="df2k,div2k,flickr")
     ap.add_argument("--resume", default="")
+    ap.add_argument("--eval_only", action="store_true")
+    ap.add_argument("--weights", default="")
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -348,6 +350,27 @@ def main():
     if args.val:
         print("validation:")
         valsets = build_val(parse_pairs(args.val), scale=2)
+
+    if args.eval_only:
+        if not args.weights:
+            raise SystemExit("FATAL: --eval_only requires --weights")
+        sd = torch.load(args.weights, map_location="cpu", weights_only=True)
+        sd = sd.get("state_dict", sd)
+        sd = {k.replace("module.", "", 1): v for k, v in sd.items()}
+        sd.pop("step", None)
+        
+        C = sd["head.weight"].shape[0]
+        B = 1 + max(int(k.split(".")[1]) for k in sd if k.startswith("body."))
+        
+        model = build_model({"c": C, "n_blocks": B}).to(device)
+        model.load_state_dict(sd)
+        win = gaussian_window(11, 1.5, device)
+        
+        print(f"\nEvaluating {args.weights} (C={C}, B={B}):")
+        res = validate(model, valsets, device, win)
+        for k, (db, ssim_val, lp_val) in res.items():
+            print(f"  {k}: {db:.2f}dB / {ssim_val:.4f} / {lp_val:.4f}")
+        return
 
     model = build_model({"c": args.channels, "n_blocks": args.blocks}).to(device)
     print(f"params: {sum(p.numel() for p in model.parameters())/1e6:.3f}M")
